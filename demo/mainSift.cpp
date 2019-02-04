@@ -4,6 +4,7 @@
 //********************************************************//
 
 #include <iostream>
+#include <fstream>
 #include <cmath>
 #include <iomanip>
 #include <opencv2/core/core.hpp>
@@ -31,8 +32,10 @@ int main(int argc, char **argv)
 
   // Read images using OpenCV
   cv::Mat limg, rimg;
-  cv::imread("data/left.pgm", 0).convertTo(limg, CV_32FC1);
-  cv::imread("data/righ.pgm", 0).convertTo(rimg, CV_32FC1);
+//  cv::imread("data/left.pgm", 0).convertTo(limg, CV_32FC1);
+//  cv::imread("data/righ.pgm", 0).convertTo(rimg, CV_32FC1);
+  cv::imread("data/im1.png", 0).convertTo(limg, CV_32FC1);
+  cv::imread("data/im2.png", 0).convertTo(rimg, CV_32FC1);
   unsigned int w = limg.cols;
   unsigned int h = limg.rows;
   std::cout << "Image size = (" << w << "," << h << ")" << std::endl;
@@ -72,14 +75,23 @@ int main(int argc, char **argv)
   img2.Download();
 
   // A bit of benchmarking
-  for (thresh=1.00f;thresh<=4.01f;thresh+=0.50f) {
-    for (int i=0;i<10;i++) {
+//  for (thresh=1.00f;thresh<=4.01f;thresh+=0.50f) {
+//    for (int i=0;i<10;i++) {
+//      cudaSift::ExtractSift(siftData1, img1, 5, initBlur, thresh, 0.0f, false);
+//      cudaSift::ExtractSift(siftData2, img2, 5, initBlur, thresh, 0.0f, false);
+//    }
+
+   {
+//  for (thresh=1.00f;thresh<=4.01f;thresh+=0.50f) {
+//    for (int i=0;i<10;i++) {
+      thresh=3.00f;
       cudaSift::ExtractSift(siftData1, img1, 5, initBlur, thresh, 0.0f, false);
       cudaSift::ExtractSift(siftData2, img2, 5, initBlur, thresh, 0.0f, false);
-    }
+//    }
+
 
     // Match Sift features and find a homography
-    for (int i=0;i<1;i++)
+    //for (int i=0;i<1;i++)
       cudaSift::MatchSiftData(siftData1, siftData2);
     float homography[9];
     int numMatches;
@@ -88,7 +100,8 @@ int main(int argc, char **argv)
     int numFit = ImproveHomography(siftData1, homography, 5, 0.00f, 0.80f, 3.0);
 
     std::cout << "Number of original features: " <<  siftData1.numPts << " " << siftData2.numPts << std::endl;
-    std::cout << "Number of matching features: " << numFit << " " << numMatches << " " << 100.0f*numFit/std::min(siftData1.numPts, siftData2.numPts) << "% " << initBlur << " " << thresh << std::endl;
+    std::cout << "Number of matching features: " << numFit << " " << numMatches << " " << 100.0f*numFit/std::min(siftData1.numPts, siftData2.numPts) << 
+		  "% " << initBlur << " " << thresh << std::endl;
   }
 
   // Print out and store summary data
@@ -172,6 +185,10 @@ void MatchAll(cudaSift::SiftData &siftData1, cudaSift::SiftData &siftData2, floa
 
 void PrintMatchData(cudaSift::SiftData &siftData1, cudaSift::SiftData &siftData2, cudaSift::Image &img)
 {
+
+  std::ofstream myfile;
+  myfile.open ("test.txt");  
+
   int numPts = siftData1.numPts;
 #ifdef MANAGEDMEM
   cudaSift::SiftPoint *sift1 = siftData1.m_data;
@@ -185,6 +202,11 @@ void PrintMatchData(cudaSift::SiftData &siftData1, cudaSift::SiftData &siftData2
   int h = img.height;
   std::cout << std::setprecision(3);
   for (int j=0;j<numPts;j++) {
+
+    myfile << sift2[j].xpos << " " << sift2[j].ypos << " "
+           << sift2[j].scale << " "
+           << sift2[j].orientation << std::endl;
+
     int k = sift1[j].match;
     if (sift1[j].match_error<5) {
       float dx = sift2[k].xpos - sift1[j].xpos;
@@ -199,6 +221,7 @@ void PrintMatchData(cudaSift::SiftData &siftData1, cudaSift::SiftData &siftData2
         std::cout << " delta=(" << (int)dx << "," << (int)dy << ")" << std::endl;
       }
 #endif
+
       int len = (int)(fabs(dx)>fabs(dy) ? fabs(dx) : fabs(dy));
       for (int l=0;l<len;l++) {
         int x = (int)(sift1[j].xpos + dx*l/len);
@@ -218,6 +241,8 @@ void PrintMatchData(cudaSift::SiftData &siftData1, cudaSift::SiftData &siftData2
       h_img[p-k] = h_img[p+k] = h_img[p-k*w] =h_img[p+k*w] = 255.0f;
   }
   std::cout << std::setprecision(6);
+  myfile.close();
+
 }
 
 

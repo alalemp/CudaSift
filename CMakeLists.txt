@@ -155,7 +155,8 @@ target_link_libraries(${PROJECT_NAME})
 ########################################################################################
 if (NOT CUDA_SIFT_HAS_PARENT)
   # OpenCV dependency: need 'core', 'imgproc', 'imgcodecs', and 'highgui'
-  find_package(OpenCV COMPONENTS core imgproc imgcodecs highgui REQUIRED)
+  # HACK https://stackoverflow.com/questions/45614230/running-multiple-versions-of-opencv-on-the-same-computer
+  find_package(OpenCV 3.2 PATHS "/usr/local/opencv-3.2.0/" COMPONENTS core imgproc imgcodecs highgui REQUIRED)
   if (OpenCV_VERSION VERSION_LESS 3.0.0)
     # Not sure what the OpenCV 2.x action is, warn and then likely link failure
     message(WARNING "OpenCV 3.x linkage was requested, the app may not link.  `imread` function was relocated to 'imgcodecs' module.")
@@ -179,6 +180,14 @@ if (NOT CUDA_SIFT_HAS_PARENT)
     file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/data/left.pgm" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/data")
     file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/data/righ.pgm" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/data")
   endif()
+endif()
+
+#############################################################################################
+# MEX FUNCTION										    #
+#############################################################################################
+if (NOT CUDA_SIFT_HAS_PARENT)
+
+
 endif()
 
 
