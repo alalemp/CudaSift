@@ -21,6 +21,10 @@ void MatchAll(cudaSift::SiftData &siftData1, cudaSift::SiftData &siftData2, floa
 
 double ScaleUp(cudaSift::Image &res, cudaSift::Image &src);
 
+std::ostream& operator << (std::ostream& os, const cudaSift::SiftData data);
+std::istream& operator >> (std::istream& os, cudaSift::SiftData& data);
+
+
 ///////////////////////////////////////////////////////////////////////////////
 // Main program
 ///////////////////////////////////////////////////////////////////////////////
@@ -30,6 +34,7 @@ int main(int argc, char **argv)
   if (argc>1)
     devNum = std::atoi(argv[1]);
 
+#ifdef IMAGES
   // Read images using OpenCV
   cv::Mat limg, rimg;
 //  cv::imread("data/left.pgm", 0).convertTo(limg, CV_32FC1);
@@ -39,37 +44,42 @@ int main(int argc, char **argv)
   unsigned int w = limg.cols;
   unsigned int h = limg.rows;
   std::cout << "Image size = (" << w << "," << h << ")" << std::endl;
-
+#endif
   // Extract Sift features from images
-  cudaSift::SiftData siftData1, siftData2;
+  std::vector<cudaSift::SiftData> siftData;
+  siftData.push_back(cudaSift::SiftData());
+  siftData.push_back(cudaSift::SiftData());
+
   float initBlur = 1.0f;
   float thresh = 3.5f;
-  cudaSift::InitSiftData(siftData1, 32768, true, true);
-  cudaSift::InitSiftData(siftData2, 32768, true, true);
+  cudaSift::InitSiftData(siftData.at(0), 5000, true, true);
+  cudaSift::InitSiftData(siftData.at(1), 5000, true, true);
 
   const bool useStreams = false;// use streams?  cudaSift assumes user manages these!
 
   // Default stream is 0
+  cudaStream_t stream0 = 0;
   cudaStream_t stream1 = 0;
-  cudaStream_t stream2 = 0;
 
   if (useStreams) {
+    safeCall(cudaStreamCreate(&stream0));
     safeCall(cudaStreamCreate(&stream1));
-    safeCall(cudaStreamCreate(&stream2));
   }
 
-  siftData1.stream = stream1;// if both are 0 they just operate on the same stream,
-  siftData2.stream = stream2;// AKA if not using streams this can be skipped
+  siftData.at(0).stream = stream0;// if both are 0 they just operate on the same stream,
+  siftData.at(1).stream = stream1;// AKA if not using streams this can be skipped
 
   // Initial Cuda images and download images to device
   std::cout << "Initializing data..." << std::endl;
   cudaSift::InitCuda(devNum);
+
+#ifdef IMAGES
   cudaSift::Image img1, img2;
   img1.Allocate(w, h, cudaSift::iAlignUp(w, 128), false, NULL, (float*)limg.data);
   img2.Allocate(w, h, cudaSift::iAlignUp(w, 128), false, NULL, (float*)rimg.data);
 
-  img1.stream = siftData1.stream;// if not using streams, these will both be zero
-  img2.stream = siftData2.stream;// AKA this step could be skipped
+  img1.stream = siftData.at(0).stream;// if not using streams, these will both be zero
+  img2.stream = siftData.at(1).stream;// AKA this step could be skipped
 
   img1.Download();
   img2.Download();
@@ -85,43 +95,81 @@ int main(int argc, char **argv)
 //  for (thresh=1.00f;thresh<=4.01f;thresh+=0.50f) {
 //    for (int i=0;i<10;i++) {
       thresh=3.00f;
-      cudaSift::ExtractSift(siftData1, img1, 5, initBlur, thresh, 0.0f, false);
-      cudaSift::ExtractSift(siftData2, img2, 5, initBlur, thresh, 0.0f, false);
+      cudaSift::ExtractSift(siftData.at(0), img1, 5, initBlur, thresh, 0.0f, false);
+      cudaSift::ExtractSift(siftData.at(1), img2, 5, initBlur, thresh, 0.0f, false);
 //    }
+
+      std::fstream out("Test0.bin", std::ios::out);
+      if (out.is_open()){
+          out << siftData.at(0);
+          out.close();
+      }
+
+      {
+        std::fstream out("Test1.bin", std::ios::out);
+        if (out.is_open()){
+            out << siftData.at(1);
+            out.close();
+        }
+      }
+#endif
+      std::fstream in("Test0.bin", std::ios::in);
+      if (in.is_open()){
+          in >> siftData.at(0);
+          in.close();
+      }
+      {
+        std::fstream in("Test1.bin", std::ios::in);
+        if (in.is_open()){
+            in >> siftData.at(1);
+            in.close();
+        }
+      }
+
+
 
 
     // Match Sift features and find a homography
     //for (int i=0;i<1;i++)
-      cudaSift::MatchSiftData(siftData1, siftData2);
+      cudaSift::MatchSiftData(siftData.at(0), siftData.at(1));
+
     float homography[9];
     int numMatches;
-    cudaSift::FindHomography(siftData1, homography, &numMatches, 10000, 0.00f, 0.80f, 5.0);
+    cudaSift::FindHomography(siftData.at(0), homography, &numMatches, 10000, 0.00f, 0.80f, 5.0);
     // ImproveHomography is in demo/geomFuncs.cpp
-    int numFit = ImproveHomography(siftData1, homography, 5, 0.00f, 0.80f, 3.0);
+    int numFit = ImproveHomography(siftData.at(0), homography, 5, 0.00f, 0.80f, 3.0);
 
-    std::cout << "Number of original features: " <<  siftData1.numPts << " " << siftData2.numPts << std::endl;
-    std::cout << "Number of matching features: " << numFit << " " << numMatches << " " << 100.0f*numFit/std::min(siftData1.numPts, siftData2.numPts) << 
+    std::cout << "Number of original features: " <<  siftData.at(0).numPts << " " << siftData.at(1).numPts << std::endl;
+    std::cout << "Number of matching features: " << numFit << " " << numMatches << " " << 100.0f*numFit/std::min(siftData.at(0).numPts, siftData.at(1).numPts) <<
 		  "% " << initBlur << " " << thresh << std::endl;
+#ifdef IMAGES
+  }
+#endif
+  // Print out and store summary data
+  for (unsigned int i=0;i<siftData.size();i++){
+    std::cout << "Num points in image [" << i << "]=" << siftData.at(i).numPts << std::endl;
   }
 
-  // Print out and store summary data
-  PrintMatchData(siftData1, siftData2, img1);
+#ifdef IMAGES
+  PrintMatchData(siftData.at(0), siftData.at(1), img1);
   cv::imwrite("data/limg_pts.pgm", limg);
 
   // Free the cuda images (host and device)
   img1.Destroy();
   img2.Destroy();
+#endif
 
   // Free Sift data from device
-  cudaSift::FreeSiftData(siftData1);
-  cudaSift::FreeSiftData(siftData2);
+  cudaSift::FreeSiftData(siftData.at(0));
+  cudaSift::FreeSiftData(siftData.at(1));
 
   // User is responsible for managing the streams
   if (useStreams) {
+    safeCall(cudaStreamDestroy(stream0));
     safeCall(cudaStreamDestroy(stream1));
-    safeCall(cudaStreamDestroy(stream2));
   }
 
+#ifdef IMAGES
   std::cout << "SIFT Correspondences saved to 'data/limg_pts.pgm'." << std::endl;
   // Display the results
   {
@@ -133,7 +181,7 @@ int main(int argc, char **argv)
     cv::imshow("SIFT Correspondences", img);
     cv::waitKey(0);
   }
-
+#endif
   return 0;
 }
 
@@ -246,3 +294,70 @@ void PrintMatchData(cudaSift::SiftData &siftData1, cudaSift::SiftData &siftData2
 }
 
 
+std::ostream& operator << (std::ostream& os, const cudaSift::SiftData data)
+{
+  os << data.numPts << " ";
+  #ifdef MANAGEDMEM
+    cudaSift::SiftPoint *sift = siftData.m_data;
+  #else
+    cudaSift::SiftPoint *sift = data.h_data;
+  #endif
+  for (int j=0;j<data.numPts;j++) {
+
+    os << sift[j].xpos  << " " <<
+          sift[j].ypos  << " " <<
+          sift[j].scale  << " " <<
+          sift[j].sharpness  << " " <<
+          sift[j].edgeness  << " " <<
+          sift[j].orientation  << " " <<
+          sift[j].score  << " " <<
+          sift[j].ambiguity  << " " <<
+          sift[j].match  << " " <<
+          sift[j].match_xpos  << " " <<
+          sift[j].match_ypos  << " " <<
+          sift[j].match_error  << " " <<
+          sift[j].subsampling << " ";
+      for (unsigned int k=0;k<3;k++){
+          os << sift[j].empty[k] << " " ;
+      }
+      for (unsigned int k=0;k<128;k++){
+          os << sift[j].data[k] << " ";
+      }
+    }
+  return os;
+}
+
+std::istream& operator >> (std::istream& os, cudaSift::SiftData& data)
+{
+  os >> data.numPts;
+
+  #ifdef MANAGEDMEM
+    cudaSift::SiftPoint *sift = siftData.m_data;
+  #else
+    cudaSift::SiftPoint *sift = data.h_data;
+  #endif
+
+    for (int j=0;j<data.numPts;j++) {
+
+      os >> sift[j].xpos ;
+      os >> sift[j].ypos ;
+      os >> sift[j].scale ;
+      os >> sift[j].sharpness ;
+      os >> sift[j].edgeness ;
+      os >> sift[j].orientation ;
+      os >> sift[j].score ;
+      os >> sift[j].ambiguity ;
+      os >> sift[j].match ;
+      os >> sift[j].match_xpos ;
+      os >> sift[j].match_ypos ;
+      os >> sift[j].match_error ;
+      os >> sift[j].subsampling ;
+      for (unsigned int k=0;k<3;k++){
+          os >> sift[j].empty[k];
+      }
+      for (unsigned int k=0;k<128;k++){
+          os >> sift[j].data[k];
+      }
+    }
+    return os;
+}

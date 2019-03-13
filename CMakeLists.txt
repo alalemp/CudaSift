@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 2.8.12) # for rpath handling
 
 project(cudaSift)
 
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+
 ########################################################################################
 # Library setup.                                                                       #
 ########################################################################################
@@ -168,6 +171,14 @@ if (NOT CUDA_SIFT_HAS_PARENT)
   # Setup the application
   set(CUDA_SIFT_APP "cudasift-demo")
   cuda_add_executable(${CUDA_SIFT_APP} demo/mainSift.cpp demo/geomFuncs.cpp)
+
+  # Link against libcudaSift and OpenCV
+  target_link_libraries(${CUDA_SIFT_APP} ${PROJECT_NAME} ${OpenCV_LIBS})
+  add_dependencies(${CUDA_SIFT_APP} ${PROJECT_NAME})
+
+
+  set(CUDA_SIFT_APP "cudasift-demo2")
+  cuda_add_executable(${CUDA_SIFT_APP} demo/mainSiftAlen.cpp demo/geomFuncs.cpp)
 
   # Link against libcudaSift and OpenCV
   target_link_libraries(${CUDA_SIFT_APP} ${PROJECT_NAME} ${OpenCV_LIBS})
